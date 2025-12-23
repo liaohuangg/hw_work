@@ -1,0 +1,24 @@
+[    0.000000] Linux version 6.8.0-52-generic (buildd@lcy02-amd64-046) (x86_64-linux-gnu-gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #53-Ubuntu SMP PREEMPT_DYNAMIC Sat Jan 11 00:06:25 UTC 2025 (Ubuntu 6.8.0-52.53-generic 6.8.12)
+[    0.000000] Command line: earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=/dev/sda2 no_systemd=true
+[    0.000000] KERNEL supported cpus:
+[    0.000000]   Intel GenuineIntel
+[    0.000000]   AMD AuthenticAMD
+[    0.000000]   Hygon HygonGenuine
+[    0.000000]   Centaur CentaurHauls
+[    0.000000]   zhaoxin   Shanghai  
+[    0.000000] BIOS-provided physical RAM map:
+[    0.000000] BIOS-e820: [mem 0x0000000000000000-0x000000000009fbff] usable
+[    0.000000] BIOS-e820: [mem 0x000000000009fc00-0x00000000000fffff] reserved
+[    0.000000] BIOS-e820: [mem 0x0000000000100000-0x00000000bfffffff] usable
+[    0.000000] BIOS-e820: [mem 0x00000000ffff0000-0x00000000ffffffff] reserved
+[    0.000000] printk: legacy bootconsole [earlyser0] enabled
+[    0.000000] NX (Execute Disable) protection: active
+[    0.000000] APIC: Static calls initialized
+[    0.000000] SMBIOS 2.5 present.
+[    0.000000] DMI:  , BIOS  06/08/2008
+[    0.000000] tsc: Fast TSC calibration using PIT
+[    0.000000] tsc: Detected 3002.962 MHz processor
+[    0.000038] last_pfn = 0xc0000 max_arch_pfn = 0x400000000
+[    0.000075] MTRR map: 1 entries (1 fixed + 0 variable; max 17), built from 8 variable MTRRs
+[    0.000127] x86/PAT: Configuration [0-7]: WB  WC  UC- UC  WB  WP  UC- WT  
+[    0.000225] found SMP MP-table at [mem 0x000f0050-0x000f005f]

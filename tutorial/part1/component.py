@@ -1,5 +1,3 @@
-from typing import cast
-
 from gem5.components.boards.simple_board import SimpleBoard
 from gem5.components.processors.simple_processor import SimpleProcessor
 from gem5.components.cachehierarchies.ruby.mesi_two_level_cache_hierarchy import (
@@ -8,7 +6,7 @@ from gem5.components.cachehierarchies.ruby.mesi_two_level_cache_hierarchy import
 from gem5.components.memory.single_channel import SingleChannelDDR4_2400
 from gem5.components.processors.cpu_types import CPUTypes
 from gem5.isas import ISA
-from gem5.resources.resource import WorkloadResource, obtain_resource
+from gem5.resources.resource import obtain_resource
 from gem5.simulate.simulator import Simulator
 
 cache_hierarchy = MESITwoLevelCacheHierarchy(
@@ -22,17 +20,17 @@ cache_hierarchy = MESITwoLevelCacheHierarchy(
 )
 
 memory = SingleChannelDDR4_2400()
+
 processor = SimpleProcessor(cpu_type=CPUTypes.TIMING, isa=ISA.ARM, num_cores=1)
+
 board = SimpleBoard(
     clk_freq="3GHz",
     processor=processor,
     memory=memory,
     cache_hierarchy=cache_hierarchy,
 )
-# 使用 cast 来解决类型检查问题
-# obtain_resource 返回 AbstractResource，但 set_workload 需要 WorkloadResource
-board.set_workload(
-    cast(WorkloadResource, obtain_resource("arm-gapbs-bfs-run"))
-)
+
+board.set_workload(obtain_resource("arm-gapbs-bfs-run"))
+
 simulator = Simulator(board=board)
 simulator.run()
