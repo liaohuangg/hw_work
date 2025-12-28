@@ -53,9 +53,9 @@ std::vector<fp32> conv2d(
                                 int w_in = w_in_start + k_w;
 
                                 // 边界检查：超出输入范围则跳过（padding=0时可省略，但保留鲁棒性）
-                                if (h_in < 0 || h_in >= H_in || w_in < 0 || w_in >= W_in) {
-                                    continue;
-                                }
+                                // if (h_in < 0 || h_in >= H_in || w_in < 0 || w_in >= W_in) {
+                                //     continue;
+                                // }
 
                                 // 计算输入特征图的索引（NCHW布局）
                                 size_t x_idx = n * C_in * H_in * W_in 
