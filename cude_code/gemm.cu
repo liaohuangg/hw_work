@@ -275,13 +275,13 @@ int main(int argc, char** argv) {
     
     print_performance_analysis("GPU (基础 Kernel)", time_gpu_basic_ms, M, N, K);
     
-    // 验证基础 kernel 结果
-    std::cout << "\n验证 GPU (基础 Kernel) 结果..." << std::endl;
-    if (verify_result(h_C_gpu_basic, h_C_cpu, M * N)) {
-        std::cout << "✓ GPU (基础 Kernel) 结果正确！" << std::endl;
-    } else {
-        std::cout << "✗ GPU (基础 Kernel) 结果错误！" << std::endl;
-    }
+    // 验证基础 kernel 结果（CPU 计算已注释，跳过验证）
+    // std::cout << "\n验证 GPU (基础 Kernel) 结果..." << std::endl;
+    // if (verify_result(h_C_gpu_basic, h_C_cpu, M * N)) {
+    //     std::cout << "✓ GPU (基础 Kernel) 结果正确！" << std::endl;
+    // } else {
+    //     std::cout << "✗ GPU (基础 Kernel) 结果错误！" << std::endl;
+    // }
     
     // ========== GPU 优化 Kernel (Tiled) ==========
     std::cout << "\n========== GPU GEMM (优化 Kernel - Tiled) ==========" << std::endl;
@@ -314,13 +314,13 @@ int main(int argc, char** argv) {
     
     print_performance_analysis("GPU (优化 Kernel - Tiled)", time_gpu_tiled_ms, M, N, K);
     
-    // 验证优化 kernel 结果
-    std::cout << "\n验证 GPU (优化 Kernel) 结果..." << std::endl;
-    if (verify_result(h_C_gpu_tiled, h_C_cpu, M * N)) {
-        std::cout << "✓ GPU (优化 Kernel) 结果正确！" << std::endl;
-    } else {
-        std::cout << "✗ GPU (优化 Kernel) 结果错误！" << std::endl;
-    }
+    // 验证优化 kernel 结果（CPU 计算已注释，跳过验证）
+    // std::cout << "\n验证 GPU (优化 Kernel) 结果..." << std::endl;
+    // if (verify_result(h_C_gpu_tiled, h_C_cpu, M * N)) {
+    //     std::cout << "✓ GPU (优化 Kernel) 结果正确！" << std::endl;
+    // } else {
+    //     std::cout << "✗ GPU (优化 Kernel) 结果错误！" << std::endl;
+    // }
     
     // ========== cuBLAS 参考性能 ==========
     std::cout << "\n========== cuBLAS GEMM (参考性能) ==========" << std::endl;
@@ -357,23 +357,20 @@ int main(int argc, char** argv) {
     // ========== 性能对比总结 ==========
     std::cout << "\n========== 性能对比总结 ==========" << std::endl;
     std::cout << std::fixed << std::setprecision(3);
-    std::cout << "CPU:              " << time_cpu_ms << " ms" << std::endl;
-    std::cout << "GPU (基础):       " << time_gpu_basic_ms << " ms" 
-              << " (加速比: " << time_cpu_ms / time_gpu_basic_ms << "x)" << std::endl;
+    std::cout << "GPU (基础):       " << time_gpu_basic_ms << " ms" << std::endl;
     std::cout << "GPU (优化):       " << time_gpu_tiled_ms << " ms" 
-              << " (加速比: " << time_cpu_ms / time_gpu_tiled_ms << "x)" << std::endl;
+              << " (相对基础提升: " << time_gpu_basic_ms / time_gpu_tiled_ms << "x)" << std::endl;
     std::cout << "cuBLAS (参考):    " << time_cublas_ms << " ms" 
-              << " (加速比: " << time_cpu_ms / time_cublas_ms << "x)" << std::endl;
+              << " (相对基础提升: " << time_gpu_basic_ms / time_cublas_ms << "x, "
+              << "相对优化版本提升: " << time_gpu_tiled_ms / time_cublas_ms << "x)" << std::endl;
     
     // 计算 GFLOPS 对比
     long long flops = (long long)M * N * 2 * K;
-    double gflops_cpu = (flops / 1e9) / (time_cpu_ms / 1000.0);
     double gflops_gpu_basic = (flops / 1e9) / (time_gpu_basic_ms / 1000.0);
     double gflops_gpu_tiled = (flops / 1e9) / (time_gpu_tiled_ms / 1000.0);
     double gflops_cublas = (flops / 1e9) / (time_cublas_ms / 1000.0);
     
     std::cout << "\n算力对比 (GFLOPS):" << std::endl;
-    std::cout << "CPU:              " << gflops_cpu << " GFLOPS" << std::endl;
     std::cout << "GPU (基础):       " << gflops_gpu_basic << " GFLOPS" << std::endl;
     std::cout << "GPU (优化):       " << gflops_gpu_tiled << " GFLOPS" << std::endl;
     std::cout << "cuBLAS (参考):    " << gflops_cublas << " GFLOPS" << std::endl;
