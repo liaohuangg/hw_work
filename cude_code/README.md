@@ -1,171 +1,90 @@
-# CUDA GEMM 性能测试
+# CUDA GEMM 优化实现
 
-本项目实现了 CUDA 版本的通用矩阵乘法（GEMM），用于测量和比较 CPU 和 GPU 的计算性能。
-
-## 项目要求
-
-- **GEMM 参数**: (M, N, K) = (20480, 2048, 8192)
-- **数据类型**: FP32 (float)
-- **任务**: 实现 CUDA GEMM，测量 CPU 和 GPU 上的计算时间和实际算力，进行性能分析和评估
+本项目实现了多种 CUDA 版本的通用矩阵乘法（GEMM），展示了不同的优化技术及其性能提升。
 
 ## 文件说明
 
-- `gemm.cu`: 主程序文件，包含：
-  - CPU GEMM 参考实现（用于验证正确性）
-  - CUDA GEMM 基础 Kernel（每个线程计算一个元素）
-  - CUDA GEMM 优化 Kernel（使用共享内存的 tile-based 方法）
-  - cuBLAS 参考实现（用于性能对比）
-  - 性能测量和分析代码
+### `gemm.cu`
+CPU 和 GPU 基础版本的性能对比。
+- **CPU GEMM**: 标准三重循环实现
+- **GPU GEMM**: 基础 CUDA kernel，每个线程计算一个元素
+- **矩阵大小**: (M, N, K) = (20480, 2048, 8192)
+- **数据类型**: FP32 (float)
 
-- `Makefile`: 编译脚本
+### `gemm_shared_memory.cu`
+共享内存优化的 GEMM 实现。
+- **Baseline**: 基础 CUDA kernel（全局内存访问）
+- **优化版本**: 使用共享内存进行分块（tiling）优化
+- **功能**: 自动搜索最优 tile size (BM, BN, BK)，并与 baseline 进行性能对比
+- **矩阵大小**: (M, N, K) = (20480, 2048, 8192)
+- **数据类型**: FP32 (float)
 
-- `README.md`: 本文件
+### `gemm_prefetch.cu`
+双缓冲数据预取优化的 GEMM 实现。
+- **Baseline**: 基础 CUDA kernel（全局内存访问）
+- **优化版本**: 使用双缓冲（double buffering）技术进行数据预取，实现计算与内存访问的重叠
+- **功能**: 自动搜索最优 tile size，并与 baseline 进行性能对比
+- **矩阵大小**: (M, N, K) = (20480, 2048, 8192)
+- **数据类型**: FP32 (float)
+
+### `gemm_tensor.cu`
+Tensor Core 优化的 GEMM 实现。
+- **CUDA Core 版本**: 使用 FP32 精度计算的 baseline（输入输出为 FP16）
+- **Tensor Core 版本**: 使用 WMMA API 调用 Tensor Core 进行加速
+- **功能**: 对比 Tensor Core 与 CUDA Core 的性能和精度差异
+- **矩阵大小**: (M, N, K) = (20480, 2048, 8192)
+- **数据类型**: FP16 (half precision)
 
 ## 编译方法
 
 ### 前置要求
-
 - NVIDIA GPU（支持 CUDA）
 - CUDA Toolkit（建议 11.0+）
-- cuBLAS 库（通常随 CUDA Toolkit 安装）
+- 对于 `gemm_tensor.cu`，需要支持 Tensor Core 的 GPU（如 Volta 架构及以上）
 
-### 编译步骤
-
+### 编译所有文件
 ```bash
-cd /home/huangl/workspace/hw_work/cude_code
 make
 ```
 
-### 检查 GPU 信息
+### 编译单个文件
+```bash
+make gemm              # 编译 gemm.cu
+make gemm_shared_memory # 编译 gemm_shared_memory.cu
+make gemm_prefetch     # 编译 gemm_prefetch.cu
+make gemm_tensor       # 编译 gemm_tensor.cu
+```
 
+### 检查 GPU 信息
 ```bash
 make info
-# 或直接运行
-nvidia-smi
 ```
 
 ## 运行方法
 
 ```bash
-./gemm
+make run              # 运行 gemm
+make run-shared-mem   # 运行 gemm_shared_memory
+make run-prefetch     # 运行 gemm_prefetch
+make run-tensor       # 运行 gemm_tensor
 ```
 
-或者使用 make：
+或者直接运行：
+```bash
+./gemm
+./gemm_shared_memory
+./gemm_prefetch
+./gemm_tensor
+```
+
+## 清理
 
 ```bash
-make run
+make clean
 ```
 
-## 输出说明
+## 优化技术说明
 
-程序会输出以下内容：
-
-1. **CPU GEMM 性能分析**
-   - 计算时间（毫秒）
-   - FLOPS（浮点运算次数）
-   - GFLOPS（每秒十亿次浮点运算）
-   - 内存带宽（GB/s）
-
-2. **GPU GEMM (基础 Kernel) 性能分析**
-   - 使用全局内存的基础实现
-   - 性能指标同上
-
-3. **GPU GEMM (优化 Kernel) 性能分析**
-   - 使用共享内存的 tile-based 优化实现
-   - 性能指标同上
-
-4. **cuBLAS 参考性能**
-   - NVIDIA 官方优化的 GEMM 库性能
-   - 作为性能上限参考
-
-5. **性能对比总结**
-   - 各实现的执行时间对比
-   - 加速比（相对于 CPU）
-   - 算力对比（GFLOPS）
-
-## 实现细节
-
-### CPU GEMM
-
-使用三重循环的标准实现：
-```cpp
-for (int i = 0; i < M; i++) {
-    for (int j = 0; j < N; j++) {
-        float sum = 0.0f;
-        for (int k = 0; k < K; k++) {
-            sum += A[i*K + k] * B[k*N + j];
-        }
-        C[i*N + j] = sum;
-    }
-}
-```
-
-### GPU GEMM (基础 Kernel)
-
-- 每个线程计算 C 矩阵的一个元素
-- 使用全局内存访问
-- Block 大小：16x16 = 256 个线程
-
-### GPU GEMM (优化 Kernel)
-
-- 使用共享内存缓存数据块（tile）
-- Tile 大小：16x16
-- 减少全局内存访问次数
-- 提高内存访问效率
-
-### 性能测量
-
-- 多次运行取平均值（默认 10 次）
-- 使用高精度时钟测量时间
-- 计算 FLOPS 和 GFLOPS
-- 计算内存带宽
-
-## 预期结果
-
-根据硬件配置不同，预期结果可能包括：
-
-- **CPU**: 通常在 1-10 GFLOPS 范围内
-- **GPU (基础)**: 通常在 100-500 GFLOPS 范围内
-- **GPU (优化)**: 通常在 500-2000 GFLOPS 范围内
-- **cuBLAS**: 通常在 1000-10000+ GFLOPS 范围内（取决于 GPU 型号）
-
-## 注意事项
-
-1. 确保有足够的 GPU 内存（至少 2GB 可用内存）
-2. 矩阵大小较大，CPU 计算可能需要较长时间
-3. 首次运行可能较慢（GPU 初始化）
-4. 结果验证使用相对误差容差（默认 1e-3）
-
-## 故障排除
-
-### 编译错误
-
-- 检查 CUDA Toolkit 是否正确安装：`nvcc --version`
-- 检查 GPU 架构是否匹配：`nvidia-smi` 查看 GPU 型号，然后修改 Makefile 中的 `-arch=sm_XX`
-
-### 运行时错误
-
-- 检查 GPU 是否可用：`nvidia-smi`
-- 检查内存是否足够：矩阵总大小约为 1.5GB
-- 检查 CUDA 驱动版本是否兼容
-
-### 性能异常
-
-- 确保 GPU 没有被其他程序占用
-- 尝试关闭其他 GPU 应用程序
-- 检查 GPU 是否处于性能模式
-
-## 进一步优化方向
-
-1. 使用 Tensor Core（如果 GPU 支持）
-2. 使用更复杂的优化技术（如 register blocking）
-3. 使用 CUDA Streams 实现异步执行
-4. 使用混合精度（FP16）计算
-5. 实现多 GPU 版本
-
-## 参考资料
-
-- [CUDA Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/)
-- [cuBLAS Documentation](https://docs.nvidia.com/cuda/cublas/)
-- [GEMM Optimization Techniques](https://github.com/NVIDIA/cutlass)
-
+1. **共享内存优化**: 将数据块加载到共享内存中，减少全局内存访问次数
+2. **数据预取**: 使用双缓冲技术，在计算当前数据块的同时预取下一个数据块，实现计算与内存访问的重叠
+3. **Tensor Core**: 利用 GPU 的专用 Tensor Core 单元，大幅提升 FP16 矩阵运算性能
