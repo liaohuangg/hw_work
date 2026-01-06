@@ -7,7 +7,6 @@
  */
 
 #include <cuda_runtime.h>
-#include <cublas_v2.h>
 #include <iostream>
 #include <vector>
 #include <chrono>
@@ -71,66 +70,6 @@ __global__ void gemm_kernel_basic(
         for (int k = 0; k < K; k++) {
             sum += A[row * K + k] * B[k * N + col];
         }
-        C[row * N + col] = sum;
-    }
-}
-
-/**
- * 优化的 CUDA GEMM Kernel（使用共享内存）
- * 使用 tile-based 方法，每个 block 处理一个 tile
- */
-#define TILE_SIZE 16
-
-__global__ void gemm_kernel_tiled(
-    const fp32* A,
-    const fp32* B,
-    fp32* C,
-    int M, int N, int K
-) {
-    // 共享内存：每个 block 缓存 A 和 B 的一个 tile
-    __shared__ fp32 tileA[TILE_SIZE][TILE_SIZE];
-    __shared__ fp32 tileB[TILE_SIZE][TILE_SIZE];
-    
-    // 线程在 block 中的位置
-    int tx = threadIdx.x;
-    int ty = threadIdx.y;
-    
-    // 线程在全局矩阵中的位置
-    int row = blockIdx.y * TILE_SIZE + ty;
-    int col = blockIdx.x * TILE_SIZE + tx;
-    
-    fp32 sum = 0.0f;
-    
-    // 遍历 K 维度，每次处理一个 tile
-    for (int tile = 0; tile < (K + TILE_SIZE - 1) / TILE_SIZE; tile++) {
-        // 加载 A 的 tile 到共享内存
-        if (row < M && (tile * TILE_SIZE + tx) < K) {
-            tileA[ty][tx] = A[row * K + tile * TILE_SIZE + tx];
-        } else {
-            tileA[ty][tx] = 0.0f;
-        }
-        
-        // 加载 B 的 tile 到共享内存
-        if ((tile * TILE_SIZE + ty) < K && col < N) {
-            tileB[ty][tx] = B[(tile * TILE_SIZE + ty) * N + col];
-        } else {
-            tileB[ty][tx] = 0.0f;
-        }
-        
-        // 同步，确保所有线程都加载完数据
-        __syncthreads();
-        
-        // 计算 tile 内的点积
-        for (int k = 0; k < TILE_SIZE; k++) {
-            sum += tileA[ty][k] * tileB[k][tx];
-        }
-        
-        // 同步，确保所有线程都计算完再加载下一个 tile
-        __syncthreads();
-    }
-    
-    // 写入结果
-    if (row < M && col < N) {
         C[row * N + col] = sum;
     }
 }
@@ -207,8 +146,7 @@ int main(int argc, char** argv) {
     fp32* h_A = (fp32*)malloc(size_A);
     fp32* h_B = (fp32*)malloc(size_B);
     fp32* h_C_cpu = (fp32*)malloc(size_C);
-    fp32* h_C_gpu_basic = (fp32*)malloc(size_C);
-    fp32* h_C_gpu_tiled = (fp32*)malloc(size_C);
+    fp32* h_C_gpu = (fp32*)malloc(size_C);
     
     // 初始化矩阵（使用随机值）
     std::cout << "\n初始化矩阵数据..." << std::endl;
@@ -234,13 +172,13 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMemcpy(d_B, h_B, size_B, cudaMemcpyHostToDevice));
     
     // ========== CPU 计算 ==========
-    // std::cout << "\n========== CPU GEMM 计算 ==========" << std::endl;
-    // auto start_cpu = std::chrono::high_resolution_clock::now();
-    // cpu_gemm(h_A, h_B, h_C_cpu, M, N, K);
-    // auto end_cpu = std::chrono::high_resolution_clock::now();
-    // auto duration_cpu = std::chrono::duration_cast<std::chrono::milliseconds>(end_cpu - start_cpu);
-    // double time_cpu_ms = duration_cpu.count();
-    // print_performance_analysis("CPU", time_cpu_ms, M, N, K);
+    std::cout << "\n========== CPU GEMM 计算 ==========" << std::endl;
+    auto start_cpu = std::chrono::high_resolution_clock::now();
+    cpu_gemm(h_A, h_B, h_C_cpu, M, N, K);
+    auto end_cpu = std::chrono::high_resolution_clock::now();
+    auto duration_cpu = std::chrono::duration_cast<std::chrono::milliseconds>(end_cpu - start_cpu);
+    double time_cpu_ms = duration_cpu.count();
+    print_performance_analysis("CPU", time_cpu_ms, M, N, K);
     
     // ========== GPU 基础 Kernel ==========
     std::cout << "\n========== GPU GEMM (基础 Kernel) ==========" << std::endl;
@@ -254,133 +192,51 @@ int main(int argc, char** argv) {
     gemm_kernel_basic<<<gridSize, blockSize>>>(d_A, d_B, d_C, M, N, K);
     CUDA_CHECK(cudaDeviceSynchronize());
     
-    // 多次运行取平均值
-    int num_runs = 10;
-    double total_time = 0.0;
-    for (int i = 0; i < num_runs; i++) {
-        CUDA_CHECK(cudaMemset(d_C, 0, size_C));
-        
-        auto start = std::chrono::high_resolution_clock::now();
-        gemm_kernel_basic<<<gridSize, blockSize>>>(d_A, d_B, d_C, M, N, K);
-        CUDA_CHECK(cudaDeviceSynchronize());
-        auto end = std::chrono::high_resolution_clock::now();
-        
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        total_time += duration.count() / 1000.0;  // 转换为毫秒
-    }
-    double time_gpu_basic_ms = total_time / num_runs;
+    // 单次运行测量时间
+    CUDA_CHECK(cudaMemset(d_C, 0, size_C));
+    
+    auto start = std::chrono::high_resolution_clock::now();
+    gemm_kernel_basic<<<gridSize, blockSize>>>(d_A, d_B, d_C, M, N, K);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    auto end = std::chrono::high_resolution_clock::now();
+    
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    double time_gpu_ms = duration.count() / 1000.0;  // 转换为毫秒
     
     // 拷贝结果回主机
-    CUDA_CHECK(cudaMemcpy(h_C_gpu_basic, d_C, size_C, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_C_gpu, d_C, size_C, cudaMemcpyDeviceToHost));
     
-    print_performance_analysis("GPU (基础 Kernel)", time_gpu_basic_ms, M, N, K);
+    print_performance_analysis("GPU (基础 Kernel)", time_gpu_ms, M, N, K);
     
-    // 验证基础 kernel 结果（CPU 计算已注释，跳过验证）
-    // std::cout << "\n验证 GPU (基础 Kernel) 结果..." << std::endl;
-    // if (verify_result(h_C_gpu_basic, h_C_cpu, M * N)) {
-    //     std::cout << "✓ GPU (基础 Kernel) 结果正确！" << std::endl;
-    // } else {
-    //     std::cout << "✗ GPU (基础 Kernel) 结果错误！" << std::endl;
-    // }
-    
-    // ========== GPU 优化 Kernel (Tiled) ==========
-    std::cout << "\n========== GPU GEMM (优化 Kernel - Tiled) ==========" << std::endl;
-    
-    dim3 blockSize_tiled(TILE_SIZE, TILE_SIZE);
-    dim3 gridSize_tiled((N + TILE_SIZE - 1) / TILE_SIZE, 
-                        (M + TILE_SIZE - 1) / TILE_SIZE);
-    
-    // 预热
-    gemm_kernel_tiled<<<gridSize_tiled, blockSize_tiled>>>(d_A, d_B, d_C, M, N, K);
-    CUDA_CHECK(cudaDeviceSynchronize());
-    
-    // 多次运行取平均值
-    total_time = 0.0;
-    for (int i = 0; i < num_runs; i++) {
-        CUDA_CHECK(cudaMemset(d_C, 0, size_C));
-        
-        auto start = std::chrono::high_resolution_clock::now();
-        gemm_kernel_tiled<<<gridSize_tiled, blockSize_tiled>>>(d_A, d_B, d_C, M, N, K);
-        CUDA_CHECK(cudaDeviceSynchronize());
-        auto end = std::chrono::high_resolution_clock::now();
-        
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        total_time += duration.count() / 1000.0;
+    // 验证 GPU 结果
+    std::cout << "\n验证 GPU 结果..." << std::endl;
+    if (verify_result(h_C_gpu, h_C_cpu, M * N)) {
+        std::cout << "✓ GPU 结果正确！" << std::endl;
+    } else {
+        std::cout << "✗ GPU 结果错误！" << std::endl;
     }
-    double time_gpu_tiled_ms = total_time / num_runs;
-    
-    // 拷贝结果回主机
-    CUDA_CHECK(cudaMemcpy(h_C_gpu_tiled, d_C, size_C, cudaMemcpyDeviceToHost));
-    
-    print_performance_analysis("GPU (优化 Kernel - Tiled)", time_gpu_tiled_ms, M, N, K);
-    
-    // 验证优化 kernel 结果（CPU 计算已注释，跳过验证）
-    // std::cout << "\n验证 GPU (优化 Kernel) 结果..." << std::endl;
-    // if (verify_result(h_C_gpu_tiled, h_C_cpu, M * N)) {
-    //     std::cout << "✓ GPU (优化 Kernel) 结果正确！" << std::endl;
-    // } else {
-    //     std::cout << "✗ GPU (优化 Kernel) 结果错误！" << std::endl;
-    // }
-    
-    // ========== cuBLAS 参考性能 ==========
-    std::cout << "\n========== cuBLAS GEMM (参考性能) ==========" << std::endl;
-    
-    cublasHandle_t handle;
-    cublasCreate(&handle);
-    
-    const fp32 alpha = 1.0f;
-    const fp32 beta = 0.0f;
-    
-    // 预热
-    cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 
-                N, M, K, &alpha, d_B, N, d_A, K, &beta, d_C, N);
-    CUDA_CHECK(cudaDeviceSynchronize());
-    
-    // 多次运行取平均值
-    total_time = 0.0;
-    for (int i = 0; i < num_runs; i++) {
-        auto start = std::chrono::high_resolution_clock::now();
-        cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 
-                    N, M, K, &alpha, d_B, N, d_A, K, &beta, d_C, N);
-        CUDA_CHECK(cudaDeviceSynchronize());
-        auto end = std::chrono::high_resolution_clock::now();
-        
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        total_time += duration.count() / 1000.0;
-    }
-    double time_cublas_ms = total_time / num_runs;
-    
-    print_performance_analysis("cuBLAS (参考)", time_cublas_ms, M, N, K);
-    
-    cublasDestroy(handle);
     
     // ========== 性能对比总结 ==========
     std::cout << "\n========== 性能对比总结 ==========" << std::endl;
     std::cout << std::fixed << std::setprecision(3);
-    std::cout << "GPU (基础):       " << time_gpu_basic_ms << " ms" << std::endl;
-    std::cout << "GPU (优化):       " << time_gpu_tiled_ms << " ms" 
-              << " (相对基础提升: " << time_gpu_basic_ms / time_gpu_tiled_ms << "x)" << std::endl;
-    std::cout << "cuBLAS (参考):    " << time_cublas_ms << " ms" 
-              << " (相对基础提升: " << time_gpu_basic_ms / time_cublas_ms << "x, "
-              << "相对优化版本提升: " << time_gpu_tiled_ms / time_cublas_ms << "x)" << std::endl;
+    std::cout << "CPU:              " << time_cpu_ms << " ms" << std::endl;
+    std::cout << "GPU:              " << time_gpu_ms << " ms" 
+              << " (相对 CPU 提升: " << time_cpu_ms / time_gpu_ms << "x)" << std::endl;
     
     // 计算 GFLOPS 对比
     long long flops = (long long)M * N * 2 * K;
-    double gflops_gpu_basic = (flops / 1e9) / (time_gpu_basic_ms / 1000.0);
-    double gflops_gpu_tiled = (flops / 1e9) / (time_gpu_tiled_ms / 1000.0);
-    double gflops_cublas = (flops / 1e9) / (time_cublas_ms / 1000.0);
+    double gflops_cpu = (flops / 1e9) / (time_cpu_ms / 1000.0);
+    double gflops_gpu = (flops / 1e9) / (time_gpu_ms / 1000.0);
     
     std::cout << "\n算力对比 (GFLOPS):" << std::endl;
-    std::cout << "GPU (基础):       " << gflops_gpu_basic << " GFLOPS" << std::endl;
-    std::cout << "GPU (优化):       " << gflops_gpu_tiled << " GFLOPS" << std::endl;
-    std::cout << "cuBLAS (参考):    " << gflops_cublas << " GFLOPS" << std::endl;
+    std::cout << "CPU:              " << gflops_cpu << " GFLOPS" << std::endl;
+    std::cout << "GPU:              " << gflops_gpu << " GFLOPS" << std::endl;
     
     // 清理资源
     free(h_A);
     free(h_B);
     free(h_C_cpu);
-    free(h_C_gpu_basic);
-    free(h_C_gpu_tiled);
+    free(h_C_gpu);
     
     CUDA_CHECK(cudaFree(d_A));
     CUDA_CHECK(cudaFree(d_B));
